@@ -1,0 +1,5 @@
+/cmake-build-debug
+/.idea
+*/.ipynb_checkpoints
+lab_1/results.csv
+lab_1/results_after_pandas.csv
