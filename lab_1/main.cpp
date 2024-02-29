@@ -4,24 +4,47 @@
 #include <vector>
 #include <cmath>
 
-struct ResultRecord {
-    int n, ntreads;
-    double seconds;
+typedef std::vector<std::vector<double>> Matrix;
+typedef std::vector<double> Vector;
+
+class Results {
+private:
+    struct ResultRecord {
+        int n, ntreads;
+        double seconds;
+    };
+
+    std::vector<ResultRecord> results;
+public:
+    Results() {
+        results = std::vector<ResultRecord>();
+    }
+
+    void addRecord(int n, int ntreads, double seconds, bool logging=true){
+        results.push_back({n, ntreads, seconds});
+        if (logging) {
+            std::cout << "n: " << n << "\tntreads: " << ntreads << "\tseconds: " << seconds << "\n";
+        }
+    }
+
+    void writeToCSV(const char *fileName) {
+        std::ofstream outFile(fileName);
+        if (outFile.is_open()) {
+            outFile << "n,ntreads,seconds\n";
+
+            for (auto it: results) {
+                outFile << it.n << ',' << it.ntreads << "," << it.seconds << "\n";
+            }
+
+            outFile.close();
+            std::cout << "Results was written to lab_1/results.csv\n";
+        } else {
+            std::cout << "Error while writing to file " << fileName << "\n";
+        }
+    }
 };
 
-void write_csv(const std::vector<ResultRecord> &results, const char *file_name = "results.csv") {
-    std::ofstream outFile(file_name);
-    if (outFile.is_open()) {
-
-        for (auto it: results) {
-            outFile << it.n << ',' << it.ntreads << "," << it.seconds << "\n";
-        }
-
-        outFile.close();
-    }
-}
-
-void init(double **A, double *b, int n) {
+void init(Matrix &A, Vector &b, int n) {
     for (int i = 0; i < n; i++) {
         b[i] = std::sqrt(i + 1);
         for (int j = 0; j < n; j++) {
@@ -30,7 +53,7 @@ void init(double **A, double *b, int n) {
     }
 }
 
-void calculate_serial(double **a, double *b, double *res, int n) {
+void calculate_serial(const Matrix &a, const Vector &b, Vector &res, int n) {
     for (int i = 0; i < n; i++) {
         double sum = 0;
         for (int j = 0; j < n; j++) {
@@ -40,11 +63,10 @@ void calculate_serial(double **a, double *b, double *res, int n) {
     }
 }
 
-void calculate_parallel(double **a, double *b, double *res, int n, int ntreads) {
-#pragma omp parallel for num_threads(ntreads) schedule(static)
+void calculate_parallel(const Matrix &a, const Vector &b, Vector &res, int n, int ntreads) {
+#pragma omp parallel for num_threads(ntreads) schedule(static) default(none) shared(a, b, res, n)
     for (int i = 0; i < n; i++) {
         double sum = 0;
-//#pragma omp simd reduction(+:sum)
         for (int j = 0; j < n; j++) {
             sum += a[i][j] * b[j];
         }
@@ -53,45 +75,35 @@ void calculate_parallel(double **a, double *b, double *res, int n, int ntreads) 
 }
 
 const std::vector<int> NTREADS = {
-        2, 4, 8, 16, 32
+        2, 4, 8, 16, 32, 64, 128, 256, 512
 };
 
 const std::vector<int> N = {
-        80, 1000, 5000, 10000
+        100, 2'000, 5'000, 10'000
 };
 
 int main() {
-    auto results = std::vector<ResultRecord>();
+    auto results = Results();
 
     for (auto n: N) {
-        auto A = new double *[n];
-        for (int i = 0; i < n; ++i) {
-            A[i] = new double[n];
-        }
-        auto b = new double[n], res = new double[n];
+        auto A = Matrix(n, Vector(n));
+        auto b = Vector(n), res = Vector(n);
         init(A, b, n);
 
         auto start = omp_get_wtime();
         calculate_serial(A, b, res, n);
         auto end = omp_get_wtime();
-        results.push_back({n, 1, end - start});
+        results.addRecord(n, 1, end - start);
 
         for (auto ntreads: NTREADS) {
             start = omp_get_wtime();
             calculate_parallel(A, b, res, n, ntreads);
             end = omp_get_wtime();
-            results.push_back({n, ntreads, end - start});
+            results.addRecord(n, ntreads, end - start);
         }
-
-        for (int i = 0; i < n; ++i) {
-            delete[] A[i];
-        }
-        delete[] A;
-        delete[] b;
-        delete[] res;
     }
 
+    results.writeToCSV("../lab_1/results.csv");
 
-    write_csv(results, "../lab_1/results.csv");
     return 0;
 }
